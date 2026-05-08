@@ -1,0 +1,17 @@
+{
+  "name": "scc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cli": "bun run src/cli.ts",
+    "test": "bun test",
+    "e2e": "bun run src/e2e.ts",
+    "dev": "bun run cli GTA_III_SCRIPT-master -o dist",
+    "postdev": "prettier dist --write --ignore-path .prettierignore"
+  },
+  "devDependencies": {
+    "prettier": "3.8.3",
+    "@types/bun": "latest"
+  }
+}
