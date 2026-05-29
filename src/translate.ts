@@ -146,18 +146,18 @@ function wrapperVarFromGlobalRef(globalRef: string): string | undefined {
   return candidate;
 }
 
+function globalIdRefFromGlobalRef(globalRef: string): string | undefined {
+  const name = wrapperVarFromGlobalRef(globalRef);
+  if (!name) return undefined;
+  return `$.$id.${name}`;
+}
+
 function refForRead(ctx: TxCtx, scName: string): string {
-  const base = ctx.ref(scName);
-  const wrapped = ctx.hudWrap.activeByGlobalRef.get(base);
-  if (wrapped) return `${wrapped.localVar}.value`;
-  return base;
+  return ctx.ref(scName);
 }
 
 function refForWrite(ctx: TxCtx, scName: string): string {
-  const base = ctx.ref(scName);
-  const wrapped = ctx.hudWrap.activeByGlobalRef.get(base);
-  if (wrapped) return `${wrapped.localVar}.value`;
-  return base;
+  return ctx.ref(scName);
 }
 
 function registerMissionFlagAlias(ctx: TxCtx, scName: string): void {
@@ -389,11 +389,6 @@ function registerHudWrapper(ctx: TxCtx, kind: HudWrapKind, globalRef: string, lo
   else ctx.hudWrap.counterVars.add(localVar);
 }
 
-function emitOriginalHudCall(ctx: TxCtx, def: Gta3Command, args: RawArg[]): string {
-  const origArgs = mapArgsWithDef(ctx, def, args, false);
-  return `Hud.${def.member}(${origArgs.join(", ")})`;
-}
-
 function tryTransformHudCommand(
   ctx: TxCtx,
   def: Gta3Command,
@@ -405,51 +400,22 @@ function tryTransformHudCommand(
   if (!a0 || a0.kind !== "ident") return undefined;
 
   const globalRef = ctx.ref(a0.name);
-  const localVar = wrapperVarFromGlobalRef(globalRef);
-  if (!localVar) return undefined;
+  const globalIdRef = globalIdRefFromGlobalRef(globalRef);
+  if (!globalIdRef) return undefined;
 
   if (
     def.member === "DisplayTimer" ||
     def.member === "DisplayTimerWithString" ||
     def.member === "DisplayCounter" ||
-    def.member === "DisplayCounterWithString"
+    def.member === "DisplayCounterWithString" ||
+    def.member === "ClearTimer" ||
+    def.member === "ClearCounter"
   ) {
-    const originalCall = emitOriginalHudCall(ctx, def, normalized);
-    if (def.member === "DisplayTimer") {
-      registerHudWrapper(ctx, "timer", globalRef, localVar);
-      return `${localVar} = new Timer(${globalRef}).display(); // xxx: ${originalCall};`;
-    }
-    if (def.member === "DisplayTimerWithString") {
-      if (normalized.length < 2) return undefined;
-      const text = rawArgToJsWithInputMode(ctx, def.input?.[1], normalized[1]!, true);
-      registerHudWrapper(ctx, "timer", globalRef, localVar);
-      return `${localVar} = new Timer({ key: ${text}, initialValue: ${globalRef} }).display(); // xxx: ${originalCall};`;
-    }
-    if (def.member === "DisplayCounter") {
-      if (normalized.length < 2) return undefined;
-      const display = rawArgToJsWithInputMode(ctx, def.input?.[1], normalized[1]!, true);
-      registerHudWrapper(ctx, "counter", globalRef, localVar);
-      return `${localVar} = new Counter({ type: ${display} }).display(); // xxx: ${originalCall};`;
-    }
-    if (normalized.length < 3) return undefined;
-    const display = rawArgToJsWithInputMode(ctx, def.input?.[1], normalized[1]!, true);
-    const text = rawArgToJsWithInputMode(ctx, def.input?.[2], normalized[2]!, true);
-    registerHudWrapper(ctx, "counter", globalRef, localVar);
-    return `${localVar} = new Counter({ key: ${text}, type: ${display} }).display(); // xxx: ${originalCall};`;
-  }
-
-  if (def.member === "ClearTimer") {
-    const binding = ctx.hudWrap.activeByGlobalRef.get(globalRef);
-    if (!binding || binding.kind !== "timer") return undefined;
-    const originalCall = emitOriginalHudCall(ctx, def, normalized);
-    return `${binding.localVar}.clear(); // xxx: ${originalCall};`;
-  }
-
-  if (def.member === "ClearCounter") {
-    const binding = ctx.hudWrap.activeByGlobalRef.get(globalRef);
-    if (!binding || binding.kind !== "counter") return undefined;
-    const originalCall = emitOriginalHudCall(ctx, def, normalized);
-    return `${binding.localVar}.clear(); // xxx: ${originalCall};`;
+    const tailArgs = normalized
+      .slice(1)
+      .map((arg, i) => rawArgToJsWithInputMode(ctx, def.input?.[i + 1], arg, true));
+    const callArgs = [globalIdRef, ...tailArgs].join(", ");
+    return `Hud.${def.member}(${callArgs});`;
   }
 
   return undefined;

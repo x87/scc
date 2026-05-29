@@ -154,6 +154,31 @@ RETURN
     expect(text).toContain("await cleanup();");
   });
 
+  test("keeps inter-label mission comments outside the previous hoisted function scope", () => {
+    const scope = new ProjectScope();
+    const src = `MISSION_START
+GOSUB mission_start_demo
+IF HAS_DEATHARREST_BEEN_EXECUTED
+  GOSUB mission_demo_failed
+ENDIF
+GOSUB mission_cleanup_demo
+MISSION_END
+
+mission_start_demo:
+WAIT 0
+RETURN
+
+// Mission Demo failed
+mission_demo_failed:
+RETURN
+
+mission_cleanup_demo:
+RETURN
+`;
+    const { text } = emitFileJs("demo.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toMatch(/}\n(?:\n)*\/\/ Mission Demo failed\n(?:\n)*async function onFailed\(\)/);
+  });
+
   test("drops terminal bare return at function tail", () => {
     const scope = new ProjectScope();
     const src = `SCRIPT_NAME t

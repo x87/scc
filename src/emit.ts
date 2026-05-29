@@ -197,15 +197,24 @@ function slugLabel(label: string): string {
   return label.replace(/[^A-Za-z0-9_$]/g, "_");
 }
 
+type LabeledSection = {
+  label: string;
+  body: TopLevel[];
+  leadingGap: TopLevel[];
+};
+
 function splitLabeledSections(
   body: TopLevel[],
-): { preamble: TopLevel[]; sections: { label: string; body: TopLevel[] }[] } {
+): { preamble: TopLevel[]; sections: LabeledSection[] } {
   const preamble: TopLevel[] = [];
-  const sections: { label: string; body: TopLevel[] }[] = [];
+  const sections: LabeledSection[] = [];
+  let pendingLeadingGap: TopLevel[] = [];
   let i = 0;
   while (i < body.length) {
     const t = body[i]!;
     if (t.kind === "Label") {
+      const leadingGap = pendingLeadingGap;
+      pendingLeadingGap = [];
       const labelName = t.name;
       i++;
       const seg: TopLevel[] = [];
@@ -213,7 +222,12 @@ function splitLabeledSections(
         seg.push(body[i]!);
         i++;
       }
-      sections.push({ label: labelName, body: seg });
+      if (i < body.length) {
+        while (seg.length > 0 && seg[seg.length - 1]!.kind === "Gap") {
+          pendingLeadingGap.unshift(seg.pop()!);
+        }
+      }
+      sections.push({ label: labelName, body: seg, leadingGap });
       continue;
     }
     preamble.push(t);
@@ -222,26 +236,8 @@ function splitLabeledSections(
   return { preamble, sections };
 }
 
-function buildHudWrapPrelude(ctx: TxCtx, scmImp: string): { importLine?: string; declLines: string[] } {
-  const timerVars = [...ctx.hudWrap.timerVars];
-  const counterVars = [...ctx.hudWrap.counterVars];
-  if (timerVars.length === 0 && counterVars.length === 0) {
-    return { declLines: [] };
-  }
-
-  const imports: string[] = [];
-  if (counterVars.length > 0) imports.push("Counter", "DisplayedCounter");
-  if (timerVars.length > 0) imports.push("DisplayedTimer", "Timer");
-
-  const declLines = [
-    ...timerVars.map((name) => `let ${name}: DisplayedTimer;`),
-    ...counterVars.map((name) => `let ${name}: DisplayedCounter;`),
-  ];
-
-  return {
-    importLine: `import { ${imports.join(", ")} } from ${JSON.stringify(scmImp)};`,
-    declLines,
-  };
+function buildHudWrapPrelude(_ctx: TxCtx): { importLine?: string; declLines: string[] } {
+  return { declLines: [] };
 }
 
 function buildFileHeaderLines(opts: {
@@ -396,7 +392,7 @@ function emitOneJsModule(params: {
   fnName: string;
   headerExtra?: string[];
   /** When set, each section is emitted as `async function <jsLabel>() { ... }` before the export. */
-  hoistedLabelSections?: { label: string; body: TopLevel[] }[];
+  hoistedLabelSections?: LabeledSection[];
   /** Statements inside `export async function fnName` — defaults to full `sf.body`. */
   mainBodyTops?: TopLevel[];
   /** If set, a trailing top-level `GOTO <label>` is lowered to `while(true)` in function body. */
@@ -436,7 +432,6 @@ function emitOneJsModule(params: {
 
   const varsImp = rel(path.join(outRoot, "vars.mts"));
   const ideImp = rel(path.join(outRoot, "ide.mts"));
-  const scmImp = rel(path.join(outRoot, "scm.mts"));
   const { ctx } = makeTxCtx(sf, scope, strict, typeEnv, labelFnNames);
   const mainTops = mainBodyTops ?? sf.body;
   let body = emitFunctionBody(ctx, mainTops, "  ", selfLoopLabel);
@@ -447,9 +442,13 @@ function emitOneJsModule(params: {
     hoistedLabelSections?.map((sec) => {
       const jsFn = labelFnNames?.get(sec.label) ?? scope.jsName(sec.label);
       const inner = emitFunctionBody(ctx, sec.body, "  ", sec.label);
-      return `async function ${jsFn}() {\n${inner}\n}`;
+      const lead = sec.leadingGap.length > 0 ? emitTopLevels(ctx, sec.leadingGap, "") : "";
+      const parts: string[] = [];
+      if (lead) parts.push(lead);
+      parts.push(`async function ${jsFn}() {\n${inner}\n}`);
+      return parts.join("\n");
     }).join("\n\n") ?? "";
-  const hudPrelude = buildHudWrapPrelude(ctx, scmImp);
+  const hudPrelude = buildHudWrapPrelude(ctx);
   const headerLines = buildFileHeaderLines({ relScPath });
   if (headerExtra?.length) headerLines.push(...headerExtra);
   const importLines = [`import { $ } from ${JSON.stringify(varsImp)};`];
@@ -526,10 +525,9 @@ export function emitFileJs(
       const mainSf: SourceFile = { ...sf, body: preamble };
       const varsImp = relFromMain(path.join(outRoot, "vars.mts"));
       const ideImp = relFromMain(path.join(outRoot, "ide.mts"));
-      const scmImp = relFromMain(path.join(outRoot, "scm.mts"));
       const { ctx } = makeTxCtx(mainSf, scope, strict, typeEnv);
       const body = emitFunctionBody(ctx, mainSf.body, "  ");
-      const hudPrelude = buildHudWrapPrelude(ctx, scmImp);
+      const hudPrelude = buildHudWrapPrelude(ctx);
       const headerLines = buildFileHeaderLines({ relScPath });
       headerLines.push(
         "// Split label modules (--split-main-labels): sibling files export per-label async functions.",
