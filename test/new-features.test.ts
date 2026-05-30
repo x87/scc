@@ -179,6 +179,20 @@ RETURN
     expect(text).toMatch(/}\n(?:\n)*\/\/ Mission Demo failed\n(?:\n)*async function onFailed\(\)/);
   });
 
+  test("emits GOSUB await with inline SCM comment and without fallback note", () => {
+    const scope = new ProjectScope();
+    const src = `SCRIPT_NAME t
+GOSUB chunk3_ambulance
+
+chunk3_ambulance:
+RETURN
+`;
+    const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toContain("await chunk3_ambulance();  // SCM GOSUB chunk3_ambulance");
+    expect(text).not.toContain("fallback if label was not emitted as async function: no-op continues linearly");
+    expect(text).not.toMatch(/\n\s*\/\/ SCM GOSUB chunk3_ambulance\s*\n\s*await chunk3_ambulance\(\);/);
+  });
+
   test("drops terminal bare return at function tail", () => {
     const scope = new ProjectScope();
     const src = `SCRIPT_NAME t

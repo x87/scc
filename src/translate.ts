@@ -681,7 +681,6 @@ export function translateStatement(
       );
       break;
     case "Gosub":
-      lines.push(`${indent}// SCM GOSUB ${st.label}`);
       // GOSUB targets are labels (local functions), not variables. If the
       // resolver `ctx.ref` would produce a global reference like `$.name`,
       // strip the `$.` prefix so we call the local function instead of the
@@ -689,8 +688,7 @@ export function translateStatement(
       // `await boat_health()` even when a global `boat_health` slot exists.
       const _rawFn = ctx.labelFnNames?.get(st.label) ?? ctx.ref(st.label);
       const fnName = _rawFn.startsWith("$.") ? _rawFn.slice(2) : _rawFn;
-      lines.push(`${indent}await ${fnName}();`);
-      lines.push(`${indent}// fallback if label was not emitted as async function: no-op continues linearly`);
+      lines.push(`${indent}await ${fnName}();  // SCM GOSUB ${st.label}`);
       break;
     case "Return":
       lines.push(`${indent}return;`);
