@@ -12,6 +12,8 @@ export type TokenKind =
   | "EQ"
   | "PLUS_EQ"
   | "MINUS_EQ"
+  | "PLUS_EQ_AT"
+  | "MINUS_EQ_AT"
   | "STAR_EQ"
   | "SLASH_EQ"
   | "EQEQ"
@@ -24,6 +26,8 @@ export type TokenKind =
   | "MINUSMINUS"
   | "PLUS"
   | "MINUS"
+  | "PLUS_AT"
+  | "MINUS_AT"
   | "STAR"
   | "SLASH"
   | "EQ_HASH"
@@ -105,6 +109,14 @@ export function lex(source: string): Token[] {
       continue;
     }
 
+    // In SCM script grammar, parentheses and comma are treated as whitespace
+    // separators, not meaningful tokens.
+    if (c === "(" || c === ")" || c === ",") {
+      trivia += c;
+      i += 1;
+      continue;
+    }
+
     if (c === "/" && source[i + 1] === "/") {
       trivia += "//";
       i += 2;
@@ -118,11 +130,19 @@ export function lex(source: string): Token[] {
     if (c === "/" && source[i + 1] === "*") {
       trivia += "/*";
       i += 2;
-      while (i < n) {
+      let depth = 1;
+      while (i < n && depth > 0) {
+        if (source[i] === "/" && source[i + 1] === "*") {
+          trivia += "/*";
+          i += 2;
+          depth += 1;
+          continue;
+        }
         if (source[i] === "*" && source[i + 1] === "/") {
           trivia += "*/";
           i += 2;
-          break;
+          depth -= 1;
+          continue;
         }
         trivia += source[i]!;
         i += 1;
@@ -193,6 +213,16 @@ export function lex(source: string): Token[] {
       i += 2;
       continue;
     }
+    if (c === "+" && source[i + 1] === "=" && source[i + 2] === "@") {
+      emit("PLUS_EQ_AT", "+=@");
+      i += 3;
+      continue;
+    }
+    if (c === "-" && source[i + 1] === "=" && source[i + 2] === "@") {
+      emit("MINUS_EQ_AT", "-=@");
+      i += 3;
+      continue;
+    }
     if (c === "+" && source[i + 1] === "=") {
       emit("PLUS_EQ", "+=");
       i += 2;
@@ -214,6 +244,16 @@ export function lex(source: string): Token[] {
       continue;
     }
 
+    if (c === "+" && source[i + 1] === "@") {
+      emit("PLUS_AT", "+@");
+      i += 2;
+      continue;
+    }
+    if (c === "-" && source[i + 1] === "@") {
+      emit("MINUS_AT", "-@");
+      i += 2;
+      continue;
+    }
     if (c === "+" && source[i + 1] === "+") {
       emit("PLUSPLUS", "++");
       i += 2;

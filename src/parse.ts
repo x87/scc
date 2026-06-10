@@ -375,11 +375,24 @@ export class Parser {
     const clauses: CondClause[] = [];
     let join: "AND" | "OR" | undefined;
     while (true) {
+      while (this.at("NEWLINE")) this.eat();
+
       let not = false;
       while (this.peek().kind === "IDENT" && upper(this.peek().lexeme) === "NOT") {
         this.eat();
         not = !not;
+        while (this.at("NEWLINE")) this.eat();
       }
+
+      // Allow `WHILE NOT` headers whose first real predicate is written on
+      // the next line prefixed by OR/AND.
+      const marker = this.identUpper();
+      if ((marker === "AND" || marker === "OR") && clauses.length === 0) {
+        this.eat();
+        while (this.at("NEWLINE")) this.eat();
+        continue;
+      }
+
       const cstart = this.idx;
       const pred = this.parsePredicateLine();
       clauses.push({ join, not, pred, tok: { start: cstart, end: this.idx - 1 } });
@@ -419,6 +432,10 @@ export class Parser {
     }
     const args: RawArg[] = [];
     while (!this.at("NEWLINE") && !this.eof()) {
+      if (this.at("COMMA")) {
+        this.eat();
+        continue;
+      }
       args.push(this.parseRawArg());
     }
     this.consumeLineEnd();
@@ -455,8 +472,8 @@ export class Parser {
 
   parseAddSub(): Expr {
     let left = this.parseMulDiv();
-    while (this.at("PLUS") || this.at("MINUS")) {
-      const op = this.eat().lexeme as "+" | "-";
+    while (this.at("PLUS") || this.at("MINUS") || this.at("PLUS_AT") || this.at("MINUS_AT")) {
+      const op = this.eat().lexeme as "+" | "-" | "+@" | "-@";
       const right = this.parseMulDiv();
       const tok = mergeRefRange(left.tok, right.tok);
       left = { kind: "Binary", left, op, right, tok };
@@ -621,7 +638,28 @@ export class Parser {
     const op = this.assignOpAhead();
     if (op) {
       this.eatOp(op);
-      const rhs = this.parseExprLine();
+      let rhs = this.parseExprLine();
+      // Normalize malformed compact decimals found in corpus, e.g. `32.5.8`.
+      // Lexer tokenizes this as NUMBER("32.5") NUMBER(".8") with no trivia.
+      // Treat the dotted suffix as a continuation of the same numeric literal.
+      if (rhs.kind === "Atom" && rhs.atom.kind === "number") {
+        let atom = rhs.atom;
+        let end = rhs.tok.end;
+        while (
+          this.at("NUMBER") &&
+          this.peek().lexeme.startsWith(".") &&
+          this.peek().leadingTrivia.length === 0
+        ) {
+          const suffix = this.eat();
+          atom = {
+            ...atom,
+            raw: atom.raw + suffix.lexeme.slice(1),
+            tok: { start: atom.tok.start, end: this.idx - 1 },
+          };
+          end = this.idx - 1;
+        }
+        rhs = { kind: "Atom", atom, tok: { start: rhs.tok.start, end } };
+      }
       this.consumeLineEnd();
       return { kind: "Assignment", target: name, op, rhs, tok: { start, end: this.idx - 1 } };
     }
@@ -641,17 +679,23 @@ export class Parser {
     const cmdName = this.expectIdentLexeme();
     const args: RawArg[] = [];
     while (!this.at("NEWLINE") && !this.eof()) {
+      if (this.at("COMMA")) {
+        this.eat();
+        continue;
+      }
       args.push(this.parseRawArg());
     }
     this.consumeLineEnd();
     return { kind: "Command", name: cmdName, args, tok: { start: cmdStart, end: this.idx - 1 } };
   }
 
-  assignOpAhead(): "=" | "+=" | "-=" | "*=" | "/=" | "=#" | null {
+  assignOpAhead(): "=" | "+=" | "-=" | "*=" | "/=" | "+=@" | "-=@" | "=#" | null {
     let j = this.idx;
     while (this.tokens[j]?.kind === "NEWLINE") j++;
     const k = this.tokens[j]?.kind;
     if (k === "EQ") return "=";
+    if (k === "PLUS_EQ_AT") return "+=@";
+    if (k === "MINUS_EQ_AT") return "-=@";
     if (k === "PLUS_EQ") return "+=";
     if (k === "MINUS_EQ") return "-=";
     if (k === "STAR_EQ") return "*=";
@@ -664,6 +708,8 @@ export class Parser {
     while (this.at("NEWLINE")) this.eat();
     const expect: Record<string, TokenKind> = {
       "=": "EQ",
+      "+=@": "PLUS_EQ_AT",
+      "-=@": "MINUS_EQ_AT",
       "+=": "PLUS_EQ",
       "-=": "MINUS_EQ",
       "*=": "STAR_EQ",

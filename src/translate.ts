@@ -268,8 +268,13 @@ export function exprToJs(ctx: TxCtx, e: Expr): string {
       return atomToJs(ctx, e.atom);
     case "UnaryMinus":
       return `-${exprToJs(ctx, e.inner)}`;
-    case "Binary":
-      return `${exprToJs(ctx, e.left)} ${e.op} ${exprToJs(ctx, e.right)}`;
+    case "Binary": {
+      const left = exprToJs(ctx, e.left);
+      const right = exprToJs(ctx, e.right);
+      if (e.op === "+@") return `${left} + timed(${right})`;
+      if (e.op === "-@") return `${left} - timed(${right})`;
+      return `${left} ${e.op} ${right}`;
+    }
   }
 }
 
@@ -287,6 +292,11 @@ function atomToJs(ctx: TxCtx, a: AtomExpr): string {
     case "parenLabel":
       return JSON.stringify(a.inner);
   }
+}
+
+function emitAssignmentOperator(op: "=" | "+=" | "-=" | "*=" | "/=" | "+=@" | "-=@" | "=#"): string {
+  if (op === "=#") return "=";
+  return op;
 }
 
 function cmpToJs(cmp: CmpOp): string {
@@ -534,23 +544,56 @@ export function translateStatement(
     const normalized = raw.replace(/\r/g, "");
     const srcLines = normalized.split("\n");
     const hasLineBreak = normalized.includes("\n");
-    let inBlock = false;
+    let blockDepth = 0;
+
+    const normalizeBlockLine = (trimmed: string, depth: number): { text: string; depth: number; touched: boolean } => {
+      let d = depth;
+      let text = "";
+      let touched = false;
+      for (let i = 0; i < trimmed.length; i++) {
+        const ch = trimmed[i]!;
+        const nx = trimmed[i + 1];
+        if (ch === "/" && nx === "*") {
+          touched = true;
+          if (d === 0) text += "/*";
+          d++;
+          i++;
+          continue;
+        }
+        if (ch === "*" && nx === "/" && d > 0) {
+          touched = true;
+          d--;
+          if (d === 0) text += "*/";
+          i++;
+          continue;
+        }
+        if (d > 0 || text.length > 0) text += ch;
+      }
+      return { text: text.trim(), depth: d, touched };
+    };
+
     for (const ln of srcLines) {
       const trimmed = ln.trim();
       if (!trimmed) {
         if (hasLineBreak) out.push("");
         continue;
       }
+      if (trimmed.startsWith("//")) {
+        out.push(`${indent}${trimmed}`);
+        continue;
+      }
+      const inBlock = blockDepth > 0;
+      const normalizedLine = normalizeBlockLine(trimmed, blockDepth);
+      blockDepth = normalizedLine.depth;
       const isCommentLine =
         inBlock ||
-        trimmed.startsWith("//") ||
+        normalizedLine.touched ||
         trimmed.startsWith("/*") ||
         trimmed.startsWith("*") ||
         trimmed.startsWith("*/");
       if (!isCommentLine) continue;
-      out.push(`${indent}${trimmed}`);
-      if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inBlock = true;
-      if (inBlock && trimmed.includes("*/")) inBlock = false;
+      if (normalizedLine.text) out.push(`${indent}${normalizedLine.text}`);
+      else if (hasLineBreak) out.push("");
     }
     return out;
   };
@@ -558,21 +601,38 @@ export function translateStatement(
   const splitRawLines = (raw: string): Array<{ line: string; isCode: boolean }> => {
     const srcLines = raw.replace(/\r/g, "").split("\n");
     const infos: Array<{ line: string; isCode: boolean }> = [];
-    let inBlock = false;
+    let blockDepth = 0;
+
+    const nextBlockDepth = (line: string, depth: number): number => {
+      if (line.startsWith("//")) return depth;
+      let d = depth;
+      for (let i = 0; i < line.length - 1; i++) {
+        if (line[i] === "/" && line[i + 1] === "*") {
+          d++;
+          i++;
+          continue;
+        }
+        if (line[i] === "*" && line[i + 1] === "/" && d > 0) {
+          d--;
+          i++;
+        }
+      }
+      return d;
+    };
+
     for (const line of srcLines) {
       const trimmed = line.trim();
       let isComment = false;
       if (trimmed.length > 0) {
         isComment =
-          inBlock ||
+          blockDepth > 0 ||
           trimmed.startsWith("//") ||
           trimmed.startsWith("/*") ||
           trimmed.startsWith("*") ||
           trimmed.startsWith("*/");
       }
       infos.push({ line, isCode: trimmed.length > 0 && !isComment });
-      if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inBlock = true;
-      if (inBlock && trimmed.includes("*/")) inBlock = false;
+      blockDepth = nextBlockDepth(trimmed, blockDepth);
     }
     return infos;
   };
@@ -640,9 +700,16 @@ export function translateStatement(
       lines.push(`${indent}// ${st.varKind} ${st.names.join(" ")}`);
       break;
     case "Assignment":
-      lines.push(
-        `${indent}${refForWrite(ctx, st.target)} ${st.op === "=#" ? "=" : st.op} ${exprToJs(ctx, st.rhs)};`,
-      );
+      {
+        const rhs = exprToJs(ctx, st.rhs);
+        if (st.op === "+=@") {
+          lines.push(`${indent}${refForWrite(ctx, st.target)} += timed(${rhs});`);
+        } else if (st.op === "-=@") {
+          lines.push(`${indent}${refForWrite(ctx, st.target)} -= timed(${rhs});`);
+        } else {
+          lines.push(`${indent}${refForWrite(ctx, st.target)} ${emitAssignmentOperator(st.op)} ${rhs};`);
+        }
+      }
       break;
     case "Mut": {
       const t = refForWrite(ctx, st.target);

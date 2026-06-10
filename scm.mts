@@ -838,6 +838,12 @@ class TextDraw {
   }
 }
 
+const CTimer_ms_fTimeStep = Memory.Translate('CTimer::ms_fTimeStep');
+
+function timed(value: number) {
+  return value * Memory.ReadFloat(CTimer_ms_fTimeStep, false);
+}
+
 export {
   SCM,
   Counter,
@@ -849,4 +855,5 @@ export {
   ObjectPool,
   TextDraw,
   PrimitiveWrapper,
+  timed,
 };

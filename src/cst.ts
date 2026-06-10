@@ -38,7 +38,13 @@ export type Statement =
   | { kind: "MissionBoundary"; which: "START" | "END"; tok: TokRef }
   | { kind: "Label"; name: string; tok: TokRef }
   | { kind: "Block"; kindBrace: "OPEN" | "CLOSE"; tok: TokRef }
-  | { kind: "Assignment"; target: string; op: "=" | "+=" | "-=" | "*=" | "/=" | "=#"; rhs: Expr; tok: TokRef }
+  | {
+      kind: "Assignment";
+      target: string;
+      op: "=" | "+=" | "-=" | "*=" | "/=" | "+=@" | "-=@" | "=#";
+      rhs: Expr;
+      tok: TokRef;
+    }
   | { kind: "If"; clauses: CondClause[]; thenStmts: Statement[]; elseStmts?: Statement[]; tok: TokRef }
   | { kind: "While"; clauses: CondClause[]; body: Statement[]; tok: TokRef }
   | { kind: "Repeat"; count: AtomExpr; counterVar: string; body: Statement[]; tok: TokRef }
@@ -64,7 +70,7 @@ export type Predicate =
 export type CmpOp = "==" | "!=" | "<>" | "<" | ">" | "<=" | ">=" | "=";
 
 export type Expr =
-  | { kind: "Binary"; left: Expr; op: "+" | "-" | "*" | "/"; right: Expr; tok: TokRef }
+  | { kind: "Binary"; left: Expr; op: "+" | "-" | "*" | "/" | "+@" | "-@"; right: Expr; tok: TokRef }
   | { kind: "UnaryMinus"; inner: Expr; tok: TokRef }
   | { kind: "Atom"; atom: AtomExpr; tok: TokRef };
 

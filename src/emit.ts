@@ -64,23 +64,56 @@ function extractCommentLines(raw: string, indent = ""): string[] {
   const out: string[] = [];
   const lines = raw.replace(/\r/g, "").split("\n");
   const hasLineBreak = raw.includes("\n");
-  let inBlock = false;
+  let blockDepth = 0;
+
+  const normalizeBlockLine = (trimmed: string, depth: number): { text: string; depth: number; touched: boolean } => {
+    let d = depth;
+    let text = "";
+    let touched = false;
+    for (let i = 0; i < trimmed.length; i++) {
+      const ch = trimmed[i]!;
+      const nx = trimmed[i + 1];
+      if (ch === "/" && nx === "*") {
+        touched = true;
+        if (d === 0) text += "/*";
+        d++;
+        i++;
+        continue;
+      }
+      if (ch === "*" && nx === "/" && d > 0) {
+        touched = true;
+        d--;
+        if (d === 0) text += "*/";
+        i++;
+        continue;
+      }
+      if (d > 0 || text.length > 0) text += ch;
+    }
+    return { text: text.trim(), depth: d, touched };
+  };
+
   for (const ln of lines) {
     const trimmed = ln.trim();
     if (!trimmed) {
       if (hasLineBreak) out.push("");
       continue;
     }
+    if (trimmed.startsWith("//")) {
+      out.push(`${indent}${trimmed}`);
+      continue;
+    }
+    const inBlock = blockDepth > 0;
+    const normalized = normalizeBlockLine(trimmed, blockDepth);
+    blockDepth = normalized.depth;
     const isCommentLine =
       inBlock ||
-      trimmed.startsWith("//") ||
+      normalized.touched ||
       trimmed.startsWith("/*") ||
       trimmed.startsWith("*") ||
       trimmed.startsWith("*/");
     if (!isCommentLine) continue;
-    out.push(`${indent}${trimmed}`);
-    if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inBlock = true;
-    if (inBlock && trimmed.includes("*/")) inBlock = false;
+    if (normalized.text) out.push(`${indent}${normalized.text}`);
+    else if (hasLineBreak) out.push("");
   }
   return out;
 }
@@ -88,21 +121,38 @@ function extractCommentLines(raw: string, indent = ""): string[] {
 function splitRawLines(raw: string): Array<{ line: string; isCode: boolean }> {
   const srcLines = raw.replace(/\r/g, "").split("\n");
   const infos: Array<{ line: string; isCode: boolean }> = [];
-  let inBlock = false;
+  let blockDepth = 0;
+
+  const nextBlockDepth = (line: string, depth: number): number => {
+    if (line.startsWith("//")) return depth;
+    let d = depth;
+    for (let i = 0; i < line.length - 1; i++) {
+      if (line[i] === "/" && line[i + 1] === "*") {
+        d++;
+        i++;
+        continue;
+      }
+      if (line[i] === "*" && line[i + 1] === "/" && d > 0) {
+        d--;
+        i++;
+      }
+    }
+    return d;
+  };
+
   for (const line of srcLines) {
     const trimmed = line.trim();
     let isComment = false;
     if (trimmed.length > 0) {
       isComment =
-        inBlock ||
+        blockDepth > 0 ||
         trimmed.startsWith("//") ||
         trimmed.startsWith("/*") ||
         trimmed.startsWith("*") ||
         trimmed.startsWith("*/");
     }
     infos.push({ line, isCode: trimmed.length > 0 && !isComment });
-    if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inBlock = true;
-    if (inBlock && trimmed.includes("*/")) inBlock = false;
+    blockDepth = nextBlockDepth(trimmed, blockDepth);
   }
   return infos;
 }
@@ -160,6 +210,11 @@ function trimTerminalBareReturn(body: string): string {
 function usesIdeHelpers(chunks: string[]): boolean {
   const text = chunks.join("\n");
   return /(?:^|[^A-Za-z0-9_$])(car|ped|hier)`/.test(text);
+}
+
+function usesTimedHelper(chunks: string[]): boolean {
+  const text = chunks.join("\n");
+  return /(?:^|[^A-Za-z0-9_$])timed\(/.test(text);
 }
 
 function emitFunctionBody(
@@ -432,6 +487,7 @@ function emitOneJsModule(params: {
 
   const varsImp = rel(path.join(outRoot, "vars.mts"));
   const ideImp = rel(path.join(outRoot, "ide.mts"));
+  const scmImp = rel(path.join(outRoot, "scm.mts"));
   const { ctx } = makeTxCtx(sf, scope, strict, typeEnv, labelFnNames);
   const mainTops = mainBodyTops ?? sf.body;
   let body = emitFunctionBody(ctx, mainTops, "  ", selfLoopLabel);
@@ -454,6 +510,9 @@ function emitOneJsModule(params: {
   const importLines = [`import { $ } from ${JSON.stringify(varsImp)};`];
   if (usesIdeHelpers([hoistedBlocks, body])) {
     importLines.push(`import { car, ped, hier } from ${JSON.stringify(ideImp)};`);
+  }
+  if (usesTimedHelper([hoistedBlocks, body])) {
+    importLines.push(`import { timed } from ${JSON.stringify(scmImp)};`);
   }
   if (hudPrelude.importLine) importLines.push(hudPrelude.importLine);
 
@@ -525,6 +584,7 @@ export function emitFileJs(
       const mainSf: SourceFile = { ...sf, body: preamble };
       const varsImp = relFromMain(path.join(outRoot, "vars.mts"));
       const ideImp = relFromMain(path.join(outRoot, "ide.mts"));
+      const scmImp = relFromMain(path.join(outRoot, "scm.mts"));
       const { ctx } = makeTxCtx(mainSf, scope, strict, typeEnv);
       const body = emitFunctionBody(ctx, mainSf.body, "  ");
       const hudPrelude = buildHudWrapPrelude(ctx);
@@ -535,6 +595,9 @@ export function emitFileJs(
       const moduleImports = [...importLines, `import { $ } from ${JSON.stringify(varsImp)};`];
       if (usesIdeHelpers([body])) {
         moduleImports.push(`import { car, ped, hier } from ${JSON.stringify(ideImp)};`);
+      }
+      if (usesTimedHelper([body])) {
+        moduleImports.push(`import { timed } from ${JSON.stringify(scmImp)};`);
       }
       if (hudPrelude.importLine) moduleImports.push(hudPrelude.importLine);
       const chunks: string[] = [headerLines.join("\n"), moduleImports.join("\n")];

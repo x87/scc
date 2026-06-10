@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { emitFileJs } from "../src/emit.ts";
+import { parseSource } from "../src/parse.ts";
+import { lex } from "../src/lex.ts";
 import { ProjectScope } from "../src/scope.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,6 +17,28 @@ SET_TIME_OF_DAY 00 36
 `;
     const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
     expect(text).toMatch(/SetTimeOfDay\(0,\s*36\)/);
+  });
+
+  test("emits timed helper for +=@ compound assignment", () => {
+    const scope = new ProjectScope();
+    scope.globalSlots.set("boat02_heading", 1);
+    const src = `SCRIPT_NAME t
+boat02_heading +=@ 1.0
+`;
+    const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toContain('import { timed } from "./scm.mts";');
+    expect(text).toContain("$.boat02_heading += timed(1.0);");
+  });
+
+  test("emits timed helper for -@ expression operator", () => {
+    const scope = new ProjectScope();
+    scope.globalSlots.set("targ2_y_bankjob2", 1);
+    const src = `SCRIPT_NAME t
+targ2_y_bankjob2 = targ2_y_bankjob2 -@ 0.04
+`;
+    const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toContain('import { timed } from "./scm.mts";');
+    expect(text).toContain("$.targ2_y_bankjob2 = $.targ2_y_bankjob2 - timed(0.04);");
   });
 
   test("wraps gxt_key arguments as quoted strings (KillFrenzy.Start)", () => {
@@ -214,5 +238,53 @@ WAIT 0
     expect(text).toContain("await asyncWait(0);");
     expect(text).not.toMatch(/^  \{$/m);
     expect(text).not.toMatch(/^  \}$/m);
+  });
+
+  test("parses command arguments separated by commas", () => {
+    const src = `SCRIPT_NAME t
+SET_VISIBILITY_OF_CLOSEST_OBJECT_OF_TYPE -647.0, -1323.0, 19.9 100.0 LODcargoshp03 FALSE
+`;
+    expect(() => parseSource(src)).not.toThrow();
+  });
+
+  test("lexes nested block comments as trivia and normalizes inner markers in emission", () => {
+    const scope = new ProjectScope();
+    const src = `SCRIPT_NAME t
+/* outer
+  /* inner */
+  keep
+*/
+WAIT 0
+`;
+    const toks = lex(src);
+    const starSlashTokens = toks.filter((t) => t.kind === "STAR" || t.kind === "SLASH");
+    expect(starSlashTokens.length).toBe(0);
+
+    const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toContain("/* outer");
+    expect(text).toContain("inner");
+    expect(text).toContain("keep");
+    expect(text).toContain("*/");
+    expect(text).not.toContain("/* inner */");
+  });
+
+  test("normalizes malformed compact decimal literals in assignments", () => {
+    const scope = new ProjectScope();
+    scope.globalSlots.set("spray_taxi_subY", 1);
+    const src = `SCRIPT_NAME t
+spray_taxi_subY = 32.5.8
+`;
+    const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
+    expect(text).toContain("$.spray_taxi_subY = 32.58;");
+  });
+
+  test("parses multiline WHILE NOT header with OR-prefixed predicates", () => {
+    const src = `SCRIPT_NAME t
+WHILE NOT
+OR NOT HAS_MODEL_LOADED COLT45
+  WAIT 0
+ENDWHILE
+`;
+    expect(() => parseSource(src)).not.toThrow();
   });
 });
