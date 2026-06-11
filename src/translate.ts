@@ -236,7 +236,7 @@ function rawArgToJsWithInputMode(
       const obj = emitObjectModelLiteral(a.name);
       if (obj) return obj;
     }
-    // SfxMission is an enum whose members map to string values (see enums.ts).
+    // SfxMission is an enum whose members map to string values (see enums.json).
     // Emit the corresponding string literal when present and cast to any
     // to avoid TypeScript errors where a `string` is used where a
     // `SfxMission` typed value is expected.

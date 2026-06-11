@@ -7,36 +7,31 @@ export type EnumInfo = {
   valueToMember: Map<number, string>;
 };
 
-const ENUMS_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "enums.ts");
+const ENUMS_JSON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "enums.json");
 
-// Cached string-valued enum maps: enumName -> (member -> stringValue)
-let _enumStringMaps: Map<string, Map<string, string>> | undefined;
+// Cached enums data from JSON
+let _enumsData: Record<string, Record<string, string | number>> | undefined;
+
+function loadEnumsData(): Record<string, Record<string, string | number>> {
+  if (!_enumsData) {
+    const json = fs.readFileSync(ENUMS_JSON_PATH, "utf8");
+    _enumsData = JSON.parse(json);
+  }
+  return _enumsData;
+}
 
 export function enumMemberStringValue(enumName: string, member: string): string | undefined {
-  if (!_enumStringMaps) {
-    _enumStringMaps = new Map<string, Map<string, string>>();
-    const src = fs.readFileSync(ENUMS_PATH, "utf8");
-    const enumRe = /export\s+enum\s+(\w+)\s*\{([\s\S]*?)\}/g;
-    let m: RegExpExecArray | null;
-    while ((m = enumRe.exec(src))) {
-      const name = m[1]!;
-      const body = m[2]!;
-      const map = new Map<string, string>();
-      const memRe = /"([^"]+)"\s*=\s*"([^"]+)"/g;
-      let mm: RegExpExecArray | null;
-      while ((mm = memRe.exec(body))) {
-        map.set(mm[1]!, mm[2]!);
-      }
-      _enumStringMaps.set(name, map);
-    }
-  }
-  const m = _enumStringMaps.get(enumName);
-  if (!m) return undefined;
-  if (m.has(member)) return m.get(member);
+  const enumsData = loadEnumsData();
+  const enumData = enumsData[enumName];
+  if (!enumData) return undefined;
+  
+  const value = enumData[member];
+  if (value !== undefined && typeof value === "string") return value;
+  
   // case-insensitive fallback
   const up = member.toUpperCase();
-  for (const [k, v] of m.entries()) {
-    if (k.toUpperCase() === up) return v;
+  for (const [k, v] of Object.entries(enumData)) {
+    if (k.toUpperCase() === up && typeof v === "string") return v;
   }
   return undefined;
 }
