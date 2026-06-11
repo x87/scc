@@ -49,7 +49,7 @@ export type TxCtx = {
 const CONST_VALUES = (() => {
   const idx = loadConstsIndex();
   const m = new Map<string, number>();
-  for (const [name, value] of Object.entries(idx.constants)) {
+  for (const [name, value] of Object.entries(idx)) {
     m.set(name.toUpperCase(), Number(value));
   }
   return m;

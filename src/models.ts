@@ -5,7 +5,7 @@ import consts from "../gta3/consts.json" with { type: "json" };
 
 export function resolveModelName(sc: string): string | undefined {
   let key = sc.toUpperCase();
-  return consts.constants[key] ?? objs[key] ?? undefined;
+  return consts[key] ?? objs[key] ?? undefined;
 }
 
 export function isModelConstant(name: string): boolean {
