@@ -485,7 +485,7 @@ function emitOneJsModule(params: {
     return r;
   };
 
-  const varsImp = rel(path.join(outRoot, "vars.mts"));
+  const varsImp = rel(path.join(outRoot, "gta3", "vars.mts"));
   const ideImp = rel(path.join(outRoot, "ide.mts"));
   const scmImp = rel(path.join(outRoot, "scm.mts"));
   const { ctx } = makeTxCtx(sf, scope, strict, typeEnv, labelFnNames);
@@ -582,7 +582,7 @@ export function emitFileJs(
       }
 
       const mainSf: SourceFile = { ...sf, body: preamble };
-      const varsImp = relFromMain(path.join(outRoot, "vars.mts"));
+      const varsImp = relFromMain(path.join(outRoot, "gta3", "vars.mts"));
       const ideImp = relFromMain(path.join(outRoot, "ide.mts"));
       const scmImp = relFromMain(path.join(outRoot, "scm.mts"));
       const { ctx } = makeTxCtx(mainSf, scope, strict, typeEnv);

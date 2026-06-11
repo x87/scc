@@ -170,7 +170,7 @@ export function collectGlobalsFromMain(mainText: string): Map<string, number> {
 
 export function buildProjectScope(repoRoot: string, inputDir: string): ProjectScope {
   const scope = new ProjectScope();
-  const varsP = path.join(repoRoot, "vars.mts");
+  const varsP = path.join(repoRoot, "gta3", "vars.mts");
   if (fs.existsSync(varsP)) {
     const varsText = fs.readFileSync(varsP, "utf8");
     // Parse `name: 123,` and `name: new Class(123),` entries from `export const $ = SCM.bind({ ... })`.

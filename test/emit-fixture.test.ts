@@ -57,7 +57,7 @@ describe("emit L2 fixtures", () => {
     scope.globalSlots.set("g_ped", 42);
     const src = fs.readFileSync(path.join(repoRoot, "test/fixtures/bind-ctor.sc"), "utf8");
     const { text } = emitFileJs("bind-ctor.sc", src, scope, repoRoot, repoRoot, false);
-    expect(text).toContain('import { $ } from "./vars.mts";');
+    expect(text).toContain('import { $ } from "./gta3/vars.mts";');
     expect(text).not.toContain("SCM.bind(");
     expect(text).toContain("$.g_ped = Char.Create(");
     expect(text).toContain("Char.Create(");
