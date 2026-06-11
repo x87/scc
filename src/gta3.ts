@@ -1,4 +1,4 @@
-import gta3 from "../gta3.json" with { type: "json" };
+import gta3 from "../gta3/gta3.json" with { type: "json" };
 
 export type Gta3Input = {
   name?: string;

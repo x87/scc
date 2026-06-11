@@ -1,7 +1,7 @@
 /** GTA3 .sc model id constants → CLEO Redux tagged template (car / ped / hier). */
 
-import objs from "../objs.json" with { type: "json" };
-import consts from "../consts.json" with { type: "json" };
+import objs from "../gta3/objs.json" with { type: "json" };
+import consts from "../gta3/consts.json" with { type: "json" };
 
 export function resolveModelName(sc: string): string | undefined {
   let key = sc.toUpperCase();

@@ -7,7 +7,7 @@ export type EnumInfo = {
   valueToMember: Map<number, string>;
 };
 
-const ENUMS_JSON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "enums.json");
+const ENUMS_JSON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "gta3", "enums.json");
 
 // Cached enums data from JSON
 let _enumsData: Record<string, Record<string, string | number>> | undefined;

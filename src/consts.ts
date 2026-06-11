@@ -11,7 +11,7 @@ export type ConstsIndex = {
 export function repoConstsPaths(): { jsonPath: string } {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   return {
-    jsonPath: path.join(repoRoot, "consts.json"),
+    jsonPath: path.join(repoRoot, "gta3", "consts.json"),
   };
 }
 
