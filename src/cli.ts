@@ -2,11 +2,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildProjectScope } from "./scope.ts";
-import { setConfigFolder } from "./consts.ts";
-import { setCommandConfigFolder } from "./gta3.ts";
-import { emitFileJs } from "./emit.ts";
+import { emitFileJs, type EmitOpts } from "./emit.ts";
 import { parseSource } from "./parse.ts";
 import type { Statement } from "./cst.ts";
+import {
+  loadConverterConfigSync,
+  setActiveConverterConfig,
+  type ConverterConfigData,
+} from "./config-entry.ts";
 
 type Opts = { out: string; report?: string; input: string; config: string };
 
@@ -32,25 +35,25 @@ function collectVarFloatsFromSource(source: string, out: Set<string>): void {
   }
 }
 
-function generateUtilsFolder(outRoot: string, repoRoot: string, configFolder: string, floatVars?: Set<string>) {
+function generateUtilsFolder(
+  outRoot: string,
+  repoRoot: string,
+  vars: Record<string, number>,
+  floatVars?: Set<string>,
+) {
   const utilsDir = path.join(outRoot, "utils");
   fs.mkdirSync(utilsDir, { recursive: true });
-  
-  // Generate vars.mts from vars.json
-  const varsJsonPath = path.join(repoRoot, configFolder, "vars.json");
-  if (fs.existsSync(varsJsonPath)) {
-    const varsJson = JSON.parse(fs.readFileSync(varsJsonPath, "utf8")) as Record<string, number>;
-    const varsLines: string[] = ['import { SCM } from "./scm.mts";\n', "export const $ = SCM.bind({"];
-    for (const [name, slot] of Object.entries(varsJson)) {
-      if (floatVars?.has(name)) {
-        varsLines.push(`  ${name}: SCM.Float(${slot}),`);
-      } else {
-        varsLines.push(`  ${name}: ${slot},`);
-      }
+
+  const varsLines: string[] = ['import { SCM } from "./scm.mts";\n', "export const $ = SCM.bind({"];
+  for (const [name, slot] of Object.entries(vars)) {
+    if (floatVars?.has(name)) {
+      varsLines.push(`  ${name}: SCM.Float(${slot}),`);
+    } else {
+      varsLines.push(`  ${name}: ${slot},`);
     }
-    varsLines.push("});\n");
-    fs.writeFileSync(path.join(utilsDir, "vars.mts"), varsLines.join("\n"));
   }
+  varsLines.push("});\n");
+  fs.writeFileSync(path.join(utilsDir, "vars.mts"), varsLines.join("\n"));
   
   // Copy scm.mts from addons folder
   const scmSource = path.join(repoRoot, "addons", "scm.mts");
@@ -73,16 +76,10 @@ export * from "./ide.mts";
   fs.writeFileSync(path.join(utilsDir, "index.ts"), indexContent);
 }
 
-function writeFloatVars(outRoot: string, names: Set<string>): void {
-  const outPath = path.join(outRoot, "floatvars.txt");
-  const body = [...names].join("\n");
-  fs.writeFileSync(outPath, body ? `${body}\n` : "");
-}
-
 function parseArgs(argv: string[]): Opts {
   let out = "out";
   let report: string | undefined;
-  let config = "gta3";
+  let config: string | undefined;
   const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -93,9 +90,29 @@ function parseArgs(argv: string[]): Opts {
   }
   if (!pos[0])
     throw new Error(
-      "Usage: bun run cli <dir-or-file.sc> [-o out] [--config config] [--report r.json]",
+      "Usage: bun run cli <dir-or-file.sc> [-o out] --config <config-folder> [--report r.json]",
+    );
+  if (!config)
+    throw new Error(
+      "Missing required --config <config-folder>. Example: --config gta3 or --config vc",
     );
   return { input: pos[0]!, out, report, config };
+}
+
+function readConfigJsonFromRepo(repoRoot: string, relativePath: string): unknown {
+  const fullPath = path.join(repoRoot, relativePath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Missing required config file: ${relativePath}`);
+  }
+  return JSON.parse(fs.readFileSync(fullPath, "utf8"));
+}
+
+function loadAndActivateConfig(repoRoot: string, configFolder: string): ConverterConfigData {
+  const config = loadConverterConfigSync(configFolder, (relativePath) =>
+    readConfigJsonFromRepo(repoRoot, relativePath),
+  );
+  setActiveConverterConfig(config);
+  return config;
 }
 
 export function convertTree(
@@ -106,6 +123,7 @@ export function convertTree(
   configFolder: string,
   emitOpts?: EmitOpts,
 ) {
+  const config = loadAndActivateConfig(repoRoot, configFolder);
   const scope = buildProjectScope(repoRoot, inputDir, configFolder);
   const floatVars = new Set<string>();
   fs.mkdirSync(outRoot, { recursive: true });
@@ -133,7 +151,26 @@ export function convertTree(
     }
   }
   walk(inputDir);
-  generateUtilsFolder(outRoot, repoRoot, configFolder, floatVars);
+  generateUtilsFolder(outRoot, repoRoot, config.vars, floatVars);
+}
+
+function convertSingleFile(
+  repoRoot: string,
+  inPath: string,
+  outRoot: string,
+  configFolder: string,
+): void {
+  const config = loadAndActivateConfig(repoRoot, configFolder);
+  const scope = buildProjectScope(repoRoot, path.dirname(inPath), configFolder);
+  const floatVars = new Set<string>();
+  const text = fs.readFileSync(inPath, "utf8");
+  collectVarFloatsFromSource(text, floatVars);
+  const base = path.basename(inPath);
+  const { jsPath, text: js } = emitFileJs(base, text, scope, outRoot, repoRoot, true);
+  const outPath = path.join(outRoot, jsPath);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, js);
+  generateUtilsFolder(outRoot, repoRoot, config.vars, floatVars);
 }
 
 function main() {
@@ -142,22 +179,11 @@ function main() {
   const inPath = path.resolve(opts.input);
   const outRoot = path.resolve(opts.out);
   const configFolder = opts.config;
-  setConfigFolder(configFolder);
-  setCommandConfigFolder(configFolder);
-  
+
   if (fs.statSync(inPath).isDirectory()) {
     convertTree(repoRoot, inPath, outRoot, true, configFolder);
   } else {
-    const scope = buildProjectScope(repoRoot, path.dirname(inPath), configFolder);
-    const floatVars = new Set<string>();
-    const text = fs.readFileSync(inPath, "utf8");
-    collectVarFloatsFromSource(text, floatVars);
-    const base = path.basename(inPath);
-    const { jsPath, text: js } = emitFileJs(base, text, scope, outRoot, repoRoot, true);
-    const outPath = path.join(outRoot, jsPath);
-    fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, js);
-    generateUtilsFolder(outRoot, repoRoot, configFolder, floatVars);
+    convertSingleFile(repoRoot, inPath, outRoot, configFolder);
   }
   if (opts.report) {
     const scope = buildProjectScope(repoRoot, path.dirname(inPath), configFolder);

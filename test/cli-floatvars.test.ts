@@ -14,12 +14,19 @@ describe("cli floatvars output", () => {
     fs.mkdirSync(path.join(repoRoot, "GTA_III_SCRIPT-master"), { recursive: true });
     fs.writeFileSync(path.join(repoRoot, "GTA_III_SCRIPT-master", "main.sc"), "SCRIPT_NAME main\n");
     
-    // Create a minimal vars.json for the test
+    // Create a minimal mandatory config payload for the test
     fs.mkdirSync(path.join(repoRoot, "gta3"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoRoot, "gta3", "gta3.json"),
+      JSON.stringify({ extensions: [{ name: "main", commands: [] }] }, null, 2),
+    );
     fs.writeFileSync(
       path.join(repoRoot, "gta3", "vars.json"),
       JSON.stringify({ alpha: 1, beta: 2, gamma: 3, some_int: 4 }, null, 2),
     );
+    fs.writeFileSync(path.join(repoRoot, "gta3", "consts.json"), JSON.stringify({}, null, 2));
+    fs.writeFileSync(path.join(repoRoot, "gta3", "objs.json"), JSON.stringify({}, null, 2));
+    fs.writeFileSync(path.join(repoRoot, "gta3", "enums.json"), JSON.stringify({}, null, 2));
 
     fs.mkdirSync(path.join(inputDir, "sub"), { recursive: true });
     fs.writeFileSync(

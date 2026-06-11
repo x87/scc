@@ -6,16 +6,12 @@ import { createHudWrapState, translateStatement, type TxCtx } from "./translate.
 import { lowerSourceFile } from "./lower.ts";
 import { collectTypeEnv, type TypeEnv } from "./types.ts";
 import type { Token } from "./lex.ts";
+import { loadConstsIndex } from "./consts.ts";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
-let _cmdIndex: Map<string, any> | undefined;
-
 function getCmdIndex(): Map<string, any> {
-  if (!_cmdIndex) {
-    _cmdIndex = buildCommandIndex();
-  }
-  return _cmdIndex;
+  return buildCommandIndex();
 }
 
 export type EmitOpts = {};
@@ -39,6 +35,10 @@ function makeTxCtx(
 ): { ctx: TxCtx; unknowns: string[] } {
   const unknowns: string[] = [];
   const missionFlagAliases = new Set<string>();
+  const constValues = new Map<string, number>();
+  for (const [name, value] of Object.entries(loadConstsIndex())) {
+    constValues.set(name.toUpperCase(), Number(value));
+  }
   const ref = (sc: string) => {
     const low = sc.toLowerCase();
     if (low === "onmission" || missionFlagAliases.has(low) || scope.isMissionFlagAlias(low)) {
@@ -59,6 +59,7 @@ function makeTxCtx(
     typeEnv,
     hudWrap: createHudWrapState(),
     missionFlagAliases,
+    constValues,
   };
   return { ctx, unknowns };
 }
@@ -540,7 +541,8 @@ export function emitFileJs(
 ): { jsPath: string; text: string } {
   let sf = parseSource(source);
   sf = lowerSourceFile(sf);
-  const typeEnv = collectTypeEnv(sf);
+  const cmdIndex = getCmdIndex();
+  const typeEnv = collectTypeEnv(sf, (name) => cmdIndex.get(name.toUpperCase()));
   const relJs = relScPath.replace(/\.sc$/i, ".ts");
   const baseName = path.basename(relJs, ".ts");
   const fnName = scope.jsName(baseName);

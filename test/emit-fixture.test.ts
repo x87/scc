@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import { parseSource } from "../src/parse.ts";
 import { lowerSourceFile } from "../src/lower.ts";
 import type { Statement, TopLevel } from "../src/cst.ts";
 import { ProjectScope } from "../src/scope.ts";
+import { activateConfig } from "./test-config.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -36,6 +37,10 @@ function countCommandsInBody(body: TopLevel[]): number {
 }
 
 describe("emit L2 fixtures", () => {
+  beforeEach(() => {
+    activateConfig("gta3");
+  });
+
   test("control-flow, gta3 conditions, goto, terminate", () => {
     const scope = new ProjectScope();
     scope.globalSlots.set("counter", 10);

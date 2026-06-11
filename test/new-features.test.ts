@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,10 +6,15 @@ import { emitFileJs } from "../src/emit.ts";
 import { parseSource } from "../src/parse.ts";
 import { lex } from "../src/lex.ts";
 import { ProjectScope } from "../src/scope.ts";
+import { activateConfig } from "./test-config.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("new emission features", () => {
+  beforeEach(() => {
+    activateConfig("gta3");
+  });
+
   test("normalizes numeric literals with leading zeros", () => {
     const scope = new ProjectScope();
     const src = `SCRIPT_NAME t

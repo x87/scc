@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   resolveModelName,
   isModelConstant,
@@ -6,13 +6,25 @@ import {
   emitObjectModelLiteral,
 } from "../src/models";
 import { lookupCommand, getAllCommands } from "../src/gta3";
+import { enumMemberStringValue } from "../src/enum-map";
+import { activateConfig } from "./test-config.ts";
 // ─── Model name resolution ──────────────────────────────────────────
 
-
 describe("object model mapping", () => {
+  beforeEach(() => {
+    activateConfig("gta3");
+  });
 
   test("emits object model literal with original name comment", () => {
     expect(emitObjectModelLiteral("door_bombshop")).toBe("2102 /* door_bombshop */");
+  });
+
+  test("switches model/enum metadata to vc config payload", () => {
+    activateConfig("vc");
+    expect(resolveModelName("REDLIGHT_PEDGRP")).toBeUndefined();
+    expect(resolveModelName("TIMER_UP")).toBeDefined();
+    expect(enumMemberStringValue("SfxMission", "A1_a")).toBeUndefined();
+    expect(enumMemberStringValue("SfxMission", "Airhrnl")).toBe("airhrnl");
   });
 });
 

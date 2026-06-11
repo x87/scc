@@ -2,8 +2,6 @@ import type { Token } from "./lex.ts";
 import type { CmpOp, CondClause, Expr, Predicate, RawArg, Statement, AtomExpr } from "./cst.ts";
 import { sliceText } from "./cst.ts";
 import type { Gta3Command, Gta3Input } from "./gta3.ts";
-import { lookupCommand } from "./gta3.ts";
-import { loadConstsIndex } from "./consts.ts";
 import { enumMemberStringValue } from "./enum-map.ts";
 import { emitModelExpr, emitObjectModelLiteral, isModelConstant } from "./models.ts";
 import type { TypeEnv } from "./types.ts";
@@ -44,19 +42,12 @@ export type TxCtx = {
   hudWrap: HudWrapState;
   /** Names declared via DECLARE_MISSION_FLAG that should resolve to ONMISSION. */
   missionFlagAliases: Set<string>;
+  /** Preloaded constant values (name -> numeric value). */
+  constValues: Map<string, number>;
 };
 
-const CONST_VALUES = (() => {
-  const idx = loadConstsIndex();
-  const m = new Map<string, number>();
-  for (const [name, value] of Object.entries(idx)) {
-    m.set(name.toUpperCase(), Number(value));
-  }
-  return m;
-})();
-
-function constLiteralWithComment(name: string): string | undefined {
-  const v = CONST_VALUES.get(name.toUpperCase());
+function constLiteralWithComment(name: string, constValues: Map<string, number>): string | undefined {
+  const v = constValues.get(name.toUpperCase());
   if (v === undefined) return undefined;
   return `${v} /* ${name} */`;
 }
@@ -67,9 +58,9 @@ function isBoolType(type: string | undefined): boolean {
   return t === "bool" || t === "boolean";
 }
 
-function boolLiteralFromIdent(name: string): string | undefined {
+function boolLiteralFromIdent(name: string, constValues: Map<string, number>): string | undefined {
   const upper = name.toUpperCase();
-  const v = CONST_VALUES.get(upper);
+  const v = constValues.get(upper);
   if (v === 0 || v === 1) {
     return `${v === 1 ? "true" : "false"} /* ${name} */`;
   }
@@ -174,7 +165,7 @@ function maybeRegisterMissionFlagAlias(ctx: TxCtx, name: string, args: RawArg[])
 function rawArgToJsMode(ctx: TxCtx, a: RawArg, wrapDisplayedRefs: boolean): string {
   switch (a.kind) {
     case "ident": {
-      const c = constLiteralWithComment(a.name);
+      const c = constLiteralWithComment(a.name, ctx.constValues);
       if (c) return c;
       return wrapDisplayedRefs ? refForRead(ctx, a.name) : ctx.ref(a.name);
     }
@@ -206,9 +197,9 @@ function rawArgToJsWithInputMode(
   const ty = spec.type;
   if (isBoolType(ty)) {
     if (a.kind === "ident") {
-      const b = boolLiteralFromIdent(a.name);
+      const b = boolLiteralFromIdent(a.name, ctx.constValues);
       if (b) return b;
-      const c = constLiteralWithComment(a.name);
+      const c = constLiteralWithComment(a.name, ctx.constValues);
       if (c) return c;
       return wrapDisplayedRefs ? refForRead(ctx, a.name) : ctx.ref(a.name);
     }
@@ -252,7 +243,7 @@ function rawArgToJsWithInputMode(
       if (objLit) return objLit;
       if (isModelConstant(a.name)) return emitModelExpr(a.name);
     }
-    const c = constLiteralWithComment(a.name);
+    const c = constLiteralWithComment(a.name, ctx.constValues);
     if (c) return c;
   }
   return rawArgToJsMode(ctx, a, wrapDisplayedRefs);
@@ -281,7 +272,7 @@ export function exprToJs(ctx: TxCtx, e: Expr): string {
 function atomToJs(ctx: TxCtx, a: AtomExpr): string {
   switch (a.kind) {
     case "ident": {
-      const c = constLiteralWithComment(a.name);
+      const c = constLiteralWithComment(a.name, ctx.constValues);
       if (c) return c;
       return refForRead(ctx, a.name);
     }
@@ -327,8 +318,13 @@ function mapArgsWithDef(
 }
 
 /** SCM IF/WHILE condition invoke → JS expression using lookupCommand + is_condition. */
-export function conditionInvokeToJs(ctx: TxCtx, name: string, args: RawArg[]): string {
-  const def = lookupCommand(name);
+export function conditionInvokeToJs(
+  ctx: TxCtx,
+  name: string,
+  args: RawArg[],
+  defFor: (n: string) => Gta3Command | undefined,
+): string {
+  const def = defFor(name);
   if (!def?.attrs?.is_condition) {
     const jsArgs = args.map((a) => rawArgToJs(ctx, a));
     return `${name}(${jsArgs.join(", ")})`;
@@ -351,22 +347,30 @@ export function conditionInvokeToJs(ctx: TxCtx, name: string, args: RawArg[]): s
   return `${name}(${jsArgs.join(", ")})`;
 }
 
-function clauseExpr(ctx: TxCtx, c: CondClause): string {
+function clauseExpr(
+  ctx: TxCtx,
+  c: CondClause,
+  defFor: (n: string) => Gta3Command | undefined,
+): string {
   const p = c.pred;
   let inner = "";
   if (p.kind === "Compare") {
     inner = `${exprToJs(ctx, p.left)} ${cmpToJs(p.cmp)} ${exprToJs(ctx, p.right)}`;
   } else {
-    inner = conditionInvokeToJs(ctx, p.name, p.args);
+    inner = conditionInvokeToJs(ctx, p.name, p.args, defFor);
   }
   if (c.not) inner = `!(${inner})`;
   return inner;
 }
 
-function joinClauses(ctx: TxCtx, clauses: CondClause[]): string {
+function joinClauses(
+  ctx: TxCtx,
+  clauses: CondClause[],
+  defFor: (n: string) => Gta3Command | undefined,
+): string {
   const parts: string[] = [];
   for (const c of clauses) {
-    const ex = clauseExpr(ctx, c);
+    const ex = clauseExpr(ctx, c, defFor);
     if (c.join === "OR") parts.push("||");
     else if (c.join === "AND") parts.push("&&");
     parts.push(ex);
@@ -537,6 +541,7 @@ export function translateStatement(
   emitChild: (s: Statement, ind: string) => string[],
 ): string[] {
   const lines: string[] = [];
+  const maybeGap = st as unknown as { kind?: string; tok?: { start: number; end: number } };
 
   const extractCommentLines = (raw: string): string[] => {
     if (!raw) return [];
@@ -695,6 +700,13 @@ export function translateStatement(
     lines.push(...extractLeadingComments());
   }
 
+  // Defensive runtime guard: some callers may accidentally pass TopLevel Gap nodes.
+  // Preserve only the source comments/newlines from the gap, never emit a synthetic "// Gap".
+  if (maybeGap.kind === "Gap" && maybeGap.tok) {
+    lines.push(...extractCommentLines(sliceText(ctx.tokens, maybeGap.tok)));
+    return lines;
+  }
+
   switch (st.kind) {
     case "VarDecl":
       lines.push(`${indent}// ${st.varKind} ${st.names.join(" ")}`);
@@ -783,7 +795,7 @@ export function translateStatement(
       lines.push(`${indent}// ${st.kind} ${"path" in st ? st.path : ""}`);
       break;
     case "If": {
-      lines.push(`${indent}if (${joinClauses(ctx, st.clauses)}) {`);
+      lines.push(`${indent}if (${joinClauses(ctx, st.clauses, defFor)}) {`);
       for (const s of st.thenStmts) lines.push(...emitChild(s, indent + "  "));
       lines.push(`${indent}}`);
       if (st.elseStmts?.length) {
@@ -794,7 +806,7 @@ export function translateStatement(
       break;
     }
     case "While": {
-      lines.push(`${indent}while (${joinClauses(ctx, st.clauses)}) {`);
+      lines.push(`${indent}while (${joinClauses(ctx, st.clauses, defFor)}) {`);
       for (const s of st.body) lines.push(...emitChild(s, indent + "  "));
       lines.push(`${indent}}`);
       break;

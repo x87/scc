@@ -9,7 +9,9 @@
     "e2e": "bun run src/e2e.ts",
     "gta3": "bun run cli GTA_III_SCRIPT-master -o dist --config gta3",
     "vc": "bun run cli GTA_VC_SCRIPT-master -o dist --config vc",
-    "postdev": "prettier dist --write --ignore-path .prettierignore"
+    "build-web": "bun run build-browser.ts",
+    "postdev": "prettier dist --write --ignore-path .prettierignore",
+    "serve": "bun run build-web && npx serve web"
   },
   "devDependencies": {
     "prettier": "3.8.3",

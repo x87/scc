@@ -27,7 +27,7 @@ if (!fs.existsSync(inputDir)) {
 }
 
 fs.rmSync(outRoot, { recursive: true, force: true });
-convertTree(repoRoot, inputDir, outRoot, false);
+convertTree(repoRoot, inputDir, outRoot, false, "gta3");
 
 const scn = countByExt(inputDir, ".sc");
 const jsCount = countByExt(outRoot, ".js");

@@ -1,5 +1,4 @@
 import type { Gta3Command } from "./gta3.ts";
-import { lookupCommand } from "./gta3.ts";
 import type { SourceFile, Statement, Expr } from "./cst.ts";
 import { walkAllStatements } from "./scope.ts";
 
@@ -24,11 +23,14 @@ export function propagateFromAssignment(env: TypeEnv, target: string, rhs: Expr)
   if (t) env.set(target, t);
 }
 
-export function collectTypeEnv(sf: SourceFile): TypeEnv {
+export function collectTypeEnv(
+  sf: SourceFile,
+  defFor?: (name: string) => Gta3Command | undefined,
+): TypeEnv {
   const env: TypeEnv = new Map();
   walkAllStatements(sf, (s: Statement) => {
     if (s.kind === "Command") {
-      const def = lookupCommand(s.name);
+      const def = defFor?.(s.name);
       if (!def?.attrs?.is_constructor || !def.output?.length) return;
       const last = s.args[s.args.length - 1];
       if (last?.kind === "ident") noteConstructorTarget(env, last.name, def);
