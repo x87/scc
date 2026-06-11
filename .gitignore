@@ -5,4 +5,5 @@ out-single-test/
 dist/
 node_modules/
 vc_dist/
-web/
+web/configs/
+web/converter.js
