@@ -30,6 +30,47 @@ function collectVarFloatsFromSource(source: string, out: Set<string>): void {
   }
 }
 
+function generateUtilsFolder(outRoot: string, repoRoot: string, floatVars?: Set<string>) {
+  const utilsDir = path.join(outRoot, "utils");
+  fs.mkdirSync(utilsDir, { recursive: true });
+  
+  // Generate vars.mts from vars.json
+  const varsJsonPath = path.join(repoRoot, "gta3", "vars.json");
+  if (fs.existsSync(varsJsonPath)) {
+    const varsJson = JSON.parse(fs.readFileSync(varsJsonPath, "utf8")) as Record<string, number>;
+    const varsLines: string[] = ['import { SCM } from "./scm.mts";\n', "export const $ = SCM.bind({"];
+    for (const [name, slot] of Object.entries(varsJson)) {
+      if (floatVars?.has(name)) {
+        varsLines.push(`  ${name}: SCM.Float(${slot}),`);
+      } else {
+        varsLines.push(`  ${name}: ${slot},`);
+      }
+    }
+    varsLines.push("});\n");
+    fs.writeFileSync(path.join(utilsDir, "vars.mts"), varsLines.join("\n"));
+  }
+  
+  // Copy scm.mts from addons folder
+  const scmSource = path.join(repoRoot, "addons", "scm.mts");
+  if (fs.existsSync(scmSource)) {
+    fs.copyFileSync(scmSource, path.join(utilsDir, "scm.mts"));
+  }
+  
+  // Copy ide.mts from addons folder
+  const ideSource = path.join(repoRoot, "addons", "ide.mts");
+  if (fs.existsSync(ideSource)) {
+    fs.copyFileSync(ideSource, path.join(utilsDir, "ide.mts"));
+  }
+  
+  // Generate barrel index.ts
+  const indexContent = `// Re-exports from shared utilities
+export * from "./vars.mts";
+export * from "./scm.mts";
+export * from "./ide.mts";
+`;
+  fs.writeFileSync(path.join(utilsDir, "index.ts"), indexContent);
+}
+
 function writeFloatVars(outRoot: string, names: Set<string>): void {
   const outPath = path.join(outRoot, "floatvars.txt");
   const body = [...names].join("\n");
@@ -91,7 +132,7 @@ export function convertTree(
     }
   }
   walk(inputDir);
-  writeFloatVars(outRoot, floatVars);
+  generateUtilsFolder(outRoot, repoRoot, floatVars);
 }
 
 function main() {
@@ -114,7 +155,7 @@ function main() {
     const outPath = path.join(outRoot, jsPath);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, js);
-    writeFloatVars(outRoot, floatVars);
+    generateUtilsFolder(outRoot, repoRoot, floatVars);
   }
   if (opts.report) {
     const scope = buildProjectScope(repoRoot, path.dirname(inPath));

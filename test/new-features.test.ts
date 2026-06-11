@@ -26,7 +26,7 @@ SET_TIME_OF_DAY 00 36
 boat02_heading +=@ 1.0
 `;
     const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
-    expect(text).toContain('import { timed } from "./scm.mts";');
+    expect(text).toContain('import { timed } from "./utils/scm.mts";');
     expect(text).toContain("$.boat02_heading += timed(1.0);");
   });
 
@@ -37,7 +37,7 @@ boat02_heading +=@ 1.0
 targ2_y_bankjob2 = targ2_y_bankjob2 -@ 0.04
 `;
     const { text } = emitFileJs("t.sc", src, scope, repoRoot, repoRoot, false);
-    expect(text).toContain('import { timed } from "./scm.mts";');
+    expect(text).toContain('import { timed } from "./utils/scm.mts";');
     expect(text).toContain("$.targ2_y_bankjob2 = $.targ2_y_bankjob2 - timed(0.04);");
   });
 

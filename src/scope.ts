@@ -170,16 +170,12 @@ export function collectGlobalsFromMain(mainText: string): Map<string, number> {
 
 export function buildProjectScope(repoRoot: string, inputDir: string): ProjectScope {
   const scope = new ProjectScope();
-  const varsP = path.join(repoRoot, "gta3", "vars.mts");
+  const varsP = path.join(repoRoot, "gta3", "vars.json");
   if (fs.existsSync(varsP)) {
     const varsText = fs.readFileSync(varsP, "utf8");
-    // Parse `name: 123,` and `name: new Class(123),` entries from `export const $ = SCM.bind({ ... })`.
-    const entryRe = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*(?:new\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\(\s*(-?\d+)\s*\)|(-?\d+))\s*,?\s*$/gm;
-    for (const m of varsText.matchAll(entryRe)) {
-      const name = m[1]!;
-      const slotRaw = m[2] ?? m[3];
-      if (!slotRaw) continue;
-      scope.addGlobalSlot(name, Number(slotRaw));
+    const vars = JSON.parse(varsText) as Record<string, number>;
+    for (const [name, slot] of Object.entries(vars)) {
+      scope.addGlobalSlot(name, slot);
     }
   }
   const mainP = path.join(inputDir, "main.sc");

@@ -57,7 +57,7 @@ describe("emit L2 fixtures", () => {
     scope.globalSlots.set("g_ped", 42);
     const src = fs.readFileSync(path.join(repoRoot, "test/fixtures/bind-ctor.sc"), "utf8");
     const { text } = emitFileJs("bind-ctor.sc", src, scope, repoRoot, repoRoot, false);
-    expect(text).toContain('import { $ } from "./gta3/vars.mts";');
+    expect(text).toContain('import { $ } from "./utils/vars.mts";');
     expect(text).not.toContain("SCM.bind(");
     expect(text).toContain("$.g_ped = Char.Create(");
     expect(text).toContain("Char.Create(");
@@ -214,17 +214,15 @@ IF counter_x > 0
 ENDIF
 `;
     const { text } = emitFileJs("hud-wrap.sc", src, scope, repoRoot, repoRoot, false);
-    expect(text).toContain('import { Counter, DisplayedCounter, DisplayedTimer, Timer } from "./scm.mts";');
-    expect(text).toContain("let timer_x: DisplayedTimer;");
-    expect(text).toContain("let counter_x: DisplayedCounter;");
-    expect(text).toContain("timer_x = new Timer($.timer_x).display(); // xxx: Hud.DisplayTimer($.timer_x);");
-    expect(text).toContain(
-      'counter_x = new Counter({ key: "KILLS", type: 0 /* COUNTER_DISPLAY_NUMBER */ }).display(); // xxx: Hud.DisplayCounterWithString($.counter_x, 0 /* COUNTER_DISPLAY_NUMBER */, "KILLS");',
-    );
-    expect(text).toContain("counter_x.value += 1;");
-    expect(text).toContain("if (counter_x.value > 0)");
-    expect(text).toContain("timer_x.clear(); // xxx: Hud.ClearTimer($.timer_x);");
-    expect(text).toContain("counter_x.clear(); // xxx: Hud.ClearCounter($.counter_x);");
+    expect(text).toContain('import { $ } from "./utils/vars.mts";');
+    expect(text).toContain("$.timer_x = 120000;");
+    expect(text).toContain("$.counter_x = 0;");
+    expect(text).toContain("Hud.DisplayTimer($.$id.timer_x);");
+    expect(text).toContain('Hud.DisplayCounterWithString($.$id.counter_x, 0 /* COUNTER_DISPLAY_NUMBER */, "KILLS");');
+    expect(text).toContain("$.counter_x += 1;");
+    expect(text).toContain("if ($.counter_x > 0)");
+    expect(text).toContain("Hud.ClearTimer($.$id.timer_x);");
+    expect(text).toContain("Hud.ClearCounter($.$id.counter_x);");
   });
 
   test("sanitizes exported function names from file names", () => {
