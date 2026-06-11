@@ -168,9 +168,9 @@ export function collectGlobalsFromMain(mainText: string): Map<string, number> {
   return scope.globalSlots;
 }
 
-export function buildProjectScope(repoRoot: string, inputDir: string): ProjectScope {
+export function buildProjectScope(repoRoot: string, inputDir: string, configFolder: string = "gta3"): ProjectScope {
   const scope = new ProjectScope();
-  const varsP = path.join(repoRoot, "gta3", "vars.json");
+  const varsP = path.join(repoRoot, configFolder, "vars.json");
   if (fs.existsSync(varsP)) {
     const varsText = fs.readFileSync(varsP, "utf8");
     const vars = JSON.parse(varsText) as Record<string, number>;

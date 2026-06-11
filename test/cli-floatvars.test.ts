@@ -42,7 +42,7 @@ describe("cli floatvars output", () => {
       ].join("\n"),
     );
 
-    convertTree(repoRoot, inputDir, outRoot, false);
+    convertTree(repoRoot, inputDir, outRoot, false, "gta3");
 
     const varsMtsPath = path.join(outRoot, "utils", "vars.mts");
     expect(fs.existsSync(varsMtsPath)).toBe(true);

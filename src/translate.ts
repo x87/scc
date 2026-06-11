@@ -773,7 +773,10 @@ export function translateStatement(
       lines.push(`${indent}// GOSUB_FILE ${st.alias} ${st.path}`);
       break;
     case "StartNewScript":
-      lines.push(`${indent}// START_NEW_SCRIPT ${st.label}`);
+      {
+        const argStrs = st.args.map((a) => rawArgToJs(ctx, a));
+        lines.push(`${indent}// START_NEW_SCRIPT ${st.label} ${argStrs.join(" ")}`);
+      }
       break;
     case "LaunchMission":
     case "LoadLaunchMission":

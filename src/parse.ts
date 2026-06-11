@@ -284,8 +284,17 @@ export class Parser {
     this.eat();
     while (this.at("NEWLINE")) this.eat();
     const label = this.expectIdentLexeme();
+    const args: RawArg[] = [];
+    // Parse variadic arguments until end of line
+    while (!this.at("NEWLINE") && !this.eof()) {
+      if (this.at("COMMA")) {
+        this.eat();
+        continue;
+      }
+      args.push(this.parseRawArg());
+    }
     this.consumeLineEnd();
-    return { kind: "StartNewScript", label, tok: { start, end: this.idx - 1 } };
+    return { kind: "StartNewScript", label, args, tok: { start, end: this.idx - 1 } };
   }
 
   parseLaunchMission(): Statement {

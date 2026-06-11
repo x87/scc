@@ -7,8 +7,8 @@
     "cli": "bun run src/cli.ts",
     "test": "bun test",
     "e2e": "bun run src/e2e.ts",
-    "gta3": "bun run cli GTA_III_SCRIPT-master -o dist",
-    "vc": "bun run cli GTA_VC_SCRIPT-master -o dist",
+    "gta3": "bun run cli GTA_III_SCRIPT-master -o dist --config gta3",
+    "vc": "bun run cli GTA_VC_SCRIPT-master -o dist --config vc",
     "postdev": "prettier dist --write --ignore-path .prettierignore"
   },
   "devDependencies": {

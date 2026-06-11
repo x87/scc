@@ -1,4 +1,6 @@
-import gta3 from "../gta3/gta3.json" with { type: "json" };
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type Gta3Input = {
   name?: string;
@@ -23,8 +25,27 @@ type Gta3Root = {
   extensions: { name: string; commands: Gta3Command[] }[];
 };
 
-export function loadCommands(): Gta3Command[] {
-  const root = gta3 as unknown as Gta3Root;
+let cachedConfigFolder: string | undefined;
+
+export function setCommandConfigFolder(folder: string): void {
+  cachedConfigFolder = folder;
+  // Invalidate cache when config changes
+  _cmdIndex = undefined;
+}
+
+function getCommandJsonPath(configFolder?: string): string {
+  const folder = configFolder || cachedConfigFolder || "gta3";
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const jsonName = folder === "vc" ? "vc.json" : "gta3.json";
+  return path.join(repoRoot, folder, jsonName);
+}
+
+export function loadCommands(configFolder?: string): Gta3Command[] {
+  const jsonPath = getCommandJsonPath(configFolder);
+  if (!fs.existsSync(jsonPath)) {
+    return [];
+  }
+  const root = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as Gta3Root;
   const all: Gta3Command[] = [];
   for (const ext of root.extensions) {
     all.push(...ext.commands);
@@ -33,9 +54,9 @@ export function loadCommands(): Gta3Command[] {
 }
 
 /** First matching command by case-insensitive name */
-export function buildCommandIndex(): Map<string, Gta3Command> {
+export function buildCommandIndex(configFolder?: string): Map<string, Gta3Command> {
   const m = new Map<string, Gta3Command>();
-  for (const c of loadCommands()) {
+  for (const c of loadCommands(configFolder)) {
     if (!c.name) continue;
     const k = c.name.toUpperCase();
     if (!m.has(k)) m.set(k, c);
@@ -46,7 +67,7 @@ export function buildCommandIndex(): Map<string, Gta3Command> {
 let _cmdIndex: Map<string, Gta3Command> | undefined;
 
 function commandIndex(): Map<string, Gta3Command> {
-  if (!_cmdIndex) _cmdIndex = buildCommandIndex();
+  if (!_cmdIndex) _cmdIndex = buildCommandIndex(cachedConfigFolder);
   return _cmdIndex;
 }
 
@@ -55,5 +76,5 @@ export function lookupCommand(name: string): Gta3Command | undefined {
 }
 
 export function getAllCommands(): Gta3Command[] {
-  return loadCommands();
+  return loadCommands(cachedConfigFolder);
 }

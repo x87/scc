@@ -1,6 +1,6 @@
 # scc
 
-Converter from Grand Theft Auto III `gta3script` (`.sc`) toward CLEO Redux JavaScript.
+Converter from GTA3script `.sc` files toward CLEO Redux TypeScript.
 
 ## Requirements
 
@@ -8,19 +8,34 @@ Converter from Grand Theft Auto III `gta3script` (`.sc`) toward CLEO Redux JavaS
 
 ## CLI
 
-Convert a single file or an entire tree. Output keeps the same relative paths as input, with `.sc` replaced by `.js`. 
+Convert a single file or an entire tree. Output keeps the same relative paths as input, with `.sc` replaced by `.ts`.
 
 ```bash
-bun run cli <path/to/file.sc-or-folder> [-o out-dir] [--strict] [--report report.json]
+bun run cli <path/to/file.sc-or-folder> [-o out-dir] [--config config-folder] [--report report.json]
 ```
 
 - **`--out` / `-o`** — output directory (default: `out`).
-- **`--strict`** — fail on unknown SCM opcodes instead of emitting a thrown placeholder.
-- **`--split-main-labels`** — when converting `main.sc`, also emit sibling `main.<label>.js` modules (each with its own `SCM.bind` wiring to the same slots); main output keeps the preamble-only flow.
+- **`--config`** — config folder containing command/variable definitions (options: `gta3`, `vc`; default: `gta3`).
 - **`--report`** — write JSON with scope metadata (renames, `GOSUB_FILE` hints, script labels, etc.).
 
-### Example
+### Examples
 
+**Convert GTA III scripts:**
 ```bash
-bun run cli GTA_III_SCRIPT-master -o output
+bun run cli GTA_III_SCRIPT-master -o output --config gta3
+```
+
+**Convert Vice City scripts:**
+```bash
+bun run cli GTA_VC_SCRIPT-master -o output --config vc
+```
+
+**Convert a single script file:**
+```bash
+bun run cli GTA_VC_SCRIPT-master/main/ambulance.sc -o output --config vc
+```
+
+**Generate scope report:**
+```bash
+bun run cli GTA_III_SCRIPT-master -o output --config gta3 --report metadata.json
 ```

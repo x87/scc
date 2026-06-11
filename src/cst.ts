@@ -54,7 +54,7 @@ export type Statement =
   | { kind: "GosubFile"; alias: string; path: string; tok: TokRef }
   | { kind: "Return"; tok: TokRef }
   | { kind: "Terminate"; tok: TokRef }
-  | { kind: "StartNewScript"; label: string; tok: TokRef }
+  | { kind: "StartNewScript"; label: string; args: RawArg[]; tok: TokRef }
   | { kind: "LaunchMission"; path: string; tok: TokRef }
   | { kind: "LoadLaunchMission"; path: string; tok: TokRef };
 

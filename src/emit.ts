@@ -9,18 +9,22 @@ import type { Token } from "./lex.ts";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
-const cmdIndex = buildCommandIndex();
+let _cmdIndex: Map<string, any> | undefined;
 
-export type EmitOpts = {
-  /** When set and input is `main.sc`, also emit one `.js` per top-level label section (duplicate SCM.bind per file). */
-  splitMainLabels?: boolean;
-};
+function getCmdIndex(): Map<string, any> {
+  if (!_cmdIndex) {
+    _cmdIndex = buildCommandIndex();
+  }
+  return _cmdIndex;
+}
+
+export type EmitOpts = {};
 
 function emitRecursive(ctx: TxCtx, st: Statement, indent: string): string[] {
   return translateStatement(
     ctx,
     st,
-    (n) => cmdIndex.get(n.toUpperCase()),
+    (n) => getCmdIndex().get(n.toUpperCase()),
     indent,
     (s, ind) => emitRecursive(ctx, s, ind),
   );
@@ -542,73 +546,9 @@ export function emitFileJs(
   const fnName = scope.jsName(baseName);
   const { preamble, sections } = splitLabeledSections(sf.body);
 
-  if (opts?.splitMainLabels && isMainScRel(relScPath)) {
-    if (sections.length > 0) {
-      fs.mkdirSync(path.join(outRoot, path.dirname(relJs)), { recursive: true });
 
-      const dir = path.dirname(relJs);
-      const mainOutAbs = path.join(outRoot, relJs);
-      const relFromMain = (toAbs: string) => {
-        let r = path.relative(path.dirname(mainOutAbs), toAbs).replace(/\\/g, "/");
-        if (!r.startsWith(".")) r = "./" + r;
-        return r;
-      };
-      const importLines: string[] = [];
-      for (const sec of sections) {
-        const slug = slugLabel(sec.label);
-        const childRelSc = path.posix.join(dir === "." ? "" : dir, `${baseName}.${slug}.sc`);
-        const childSf: SourceFile = { ...sf, body: sec.body };
-        const childFn = `${fnName}_${slug}`;
-        const { jsPath: childPath, text: childText } = emitOneJsModule({
-          relScPath: childRelSc,
-          scope,
-          strict,
-          typeEnv,
-          outRoot,
-          repoRoot,
-          sf: childSf,
-          fnName: childFn,
-          selfLoopLabel: sec.label,
-          headerExtra: [
-            `// Extracted label block ${sec.label} from ${relScPath} (--split-main-labels).`,
-            `// Uses shared vars.mts bindings; all copies address the same script variables.`,
-          ],
-        });
-        const outChild = path.join(outRoot, childPath);
-        fs.mkdirSync(path.dirname(outChild), { recursive: true });
-        fs.writeFileSync(outChild, childText);
-        const importFrom = relFromMain(outChild);
-        importLines.push(`import { ${childFn} } from ${JSON.stringify(importFrom)};`);
-      }
 
-      const mainSf: SourceFile = { ...sf, body: preamble };
-      const varsImp = relFromMain(path.join(outRoot, "utils", "vars.mts"));
-      const ideImp = relFromMain(path.join(outRoot, "utils", "ide.mts"));
-      const scmImp = relFromMain(path.join(outRoot, "utils", "scm.mts"));
-      const { ctx } = makeTxCtx(mainSf, scope, strict, typeEnv);
-      const body = emitFunctionBody(ctx, mainSf.body, "  ");
-      const hudPrelude = buildHudWrapPrelude(ctx);
-      const headerLines = buildFileHeaderLines({ relScPath });
-      headerLines.push(
-        "// Split label modules (--split-main-labels): sibling files export per-label async functions.",
-      );
-      const moduleImports = [...importLines, `import { $ } from ${JSON.stringify(varsImp)};`];
-      if (usesIdeHelpers([body])) {
-        moduleImports.push(`import { car, ped, hier } from ${JSON.stringify(ideImp)};`);
-      }
-      if (usesTimedHelper([body])) {
-        moduleImports.push(`import { timed } from ${JSON.stringify(scmImp)};`);
-      }
-      if (hudPrelude.importLine) moduleImports.push(hudPrelude.importLine);
-      const chunks: string[] = [headerLines.join("\n"), moduleImports.join("\n")];
-      if (hudPrelude.declLines.length > 0) chunks.push(hudPrelude.declLines.join("\n"));
-      chunks.push(`export async function ${fnName}() {\n${body}\n}`);
-      const text = `${chunks.join("\n\n")}\n`;
-      return { jsPath: relJs, text };
-    }
-  }
-
-  const useHoist = sections.length > 0 && !(opts?.splitMainLabels && isMainScRel(relScPath));
+  const useHoist = sections.length > 0;
 
   const missionPrelude = useHoist ? analyzeMissionPrelude(sf, preamble) : undefined;
 
