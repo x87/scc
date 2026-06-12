@@ -451,12 +451,15 @@
             scInput.innerHTML = text ? highlightCode(text, 'gta3script') : '';
             const highlightDuration = performance.now() - highlightStart;
             log('RENDER_SC', `Highlight + innerHTML took ${highlightDuration.toFixed(2)}ms`);
-            
-            renderingSc = false;
 
             if (wasFocused) setCaretOffset(scInput, caret);
             scInput.scrollTop = scrollTop;
             scInput.scrollLeft = scrollLeft;
+            
+            // Keep renderingSc flag true until next event loop to suppress input events from innerHTML change
+            setTimeout(() => {
+                renderingSc = false;
+            }, 0);
             
             const totalDuration = performance.now() - start;
             log('RENDER_SC', `Total render time: ${totalDuration.toFixed(2)}ms`);
