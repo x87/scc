@@ -277,6 +277,15 @@
         let converterReady = false;
         let renderingSc = false;
 
+        function log(operation, message, data = null) {
+            const timestamp = new Date().toISOString().split('T')[1];
+            if (data !== null) {
+                console.log(`[${timestamp}] ${operation}: ${message}`, data);
+            } else {
+                console.log(`[${timestamp}] ${operation}: ${message}`);
+            }
+        }
+
         function escapeHtml(text) {
             return text
                 .replace(/&/g, '&amp;')
@@ -285,7 +294,11 @@
         }
 
         function registerGta3ScriptLanguage() {
-            if (!window.hljs || window.hljs.getLanguage('gta3script')) return;
+            if (!window.hljs || window.hljs.getLanguage('gta3script')) {
+                log('HLJS', 'GTA3Script language already registered or highlight.js not available');
+                return;
+            }
+            const start = performance.now();
             window.hljs.registerLanguage('gta3script', (hljs) => {
                 const controlKeywords = [
                     'MISSION_START', 'MISSION_END', 'SCRIPT_START', 'SCRIPT_END',
@@ -337,27 +350,41 @@
                     ]
                 };
             });
+            const duration = performance.now() - start;
+            log('HLJS', `GTA3Script language registered in ${duration.toFixed(2)}ms`);
         }
 
         function highlightCode(text, language) {
             if (!window.hljs) return escapeHtml(text);
+            const start = performance.now();
             try {
-                return window.hljs.highlight(text, { language, ignoreIllegals: true }).value;
-            } catch {
+                const result = window.hljs.highlight(text, { language, ignoreIllegals: true }).value;
+                const duration = performance.now() - start;
+                log('HIGHLIGHT', `${language} highlighting completed in ${duration.toFixed(2)}ms for ${text.length} chars`);
+                return result;
+            } catch (e) {
+                const duration = performance.now() - start;
+                log('HIGHLIGHT', `Error after ${duration.toFixed(2)}ms`, e);
                 return escapeHtml(text);
             }
         }
 
         function getEditorText(el) {
+            const start = performance.now();
             const raw = (el.innerText || '')
                 .replace(/\r\n/g, '\n')
                 .replace(/\r/g, '\n')
                 .replace(/\u00A0/g, ' ')
                 .replace(/\u200B/g, '');
+            const duration = performance.now() - start;
+            if (duration > 10) {
+                log('PERF', `getEditorText took ${duration.toFixed(2)}ms for ${raw.length} chars (slow!)`);
+            }
             return raw;
         }
 
         function getCaretOffset(el) {
+            const start = performance.now();
             const sel = window.getSelection();
             if (!sel || sel.rangeCount === 0) return 0;
             const range = sel.getRangeAt(0);
@@ -365,10 +392,16 @@
             const pre = range.cloneRange();
             pre.selectNodeContents(el);
             pre.setEnd(range.endContainer, range.endOffset);
-            return pre.toString().length;
+            const offset = pre.toString().length;
+            const duration = performance.now() - start;
+            if (duration > 5) {
+                log('PERF', `getCaretOffset took ${duration.toFixed(2)}ms (slow!)`);
+            }
+            return offset;
         }
 
         function setCaretOffset(el, offset) {
+            const start = performance.now();
             const sel = window.getSelection();
             if (!sel) return;
 
@@ -384,6 +417,10 @@
                     range.collapse(true);
                     sel.removeAllRanges();
                     sel.addRange(range);
+                    const duration = performance.now() - start;
+                    if (duration > 5) {
+                        log('PERF', `setCaretOffset took ${duration.toFixed(2)}ms (slow!)`);
+                    }
                     return;
                 }
                 consumed += len;
@@ -394,43 +431,73 @@
             range.collapse(false);
             sel.removeAllRanges();
             sel.addRange(range);
+            const duration = performance.now() - start;
+            if (duration > 5) {
+                log('PERF', `setCaretOffset took ${duration.toFixed(2)}ms at end (slow!)`);
+            }
         }
 
         function renderScEditor(text) {
+            const start = performance.now();
+            log('RENDER_SC', `Started rendering ${text.length} chars`);
+            
             const wasFocused = document.activeElement === scInput;
             const caret = wasFocused ? getCaretOffset(scInput) : 0;
             const scrollTop = scInput.scrollTop;
             const scrollLeft = scInput.scrollLeft;
 
             renderingSc = true;
+            const highlightStart = performance.now();
             scInput.innerHTML = text ? highlightCode(text, 'gta3script') : '';
+            const highlightDuration = performance.now() - highlightStart;
+            log('RENDER_SC', `Highlight + innerHTML took ${highlightDuration.toFixed(2)}ms`);
+            
             renderingSc = false;
 
             if (wasFocused) setCaretOffset(scInput, caret);
             scInput.scrollTop = scrollTop;
             scInput.scrollLeft = scrollLeft;
+            
+            const totalDuration = performance.now() - start;
+            log('RENDER_SC', `Total render time: ${totalDuration.toFixed(2)}ms`);
         }
 
         function renderTsEditor(text) {
+            const start = performance.now();
+            log('RENDER_TS', `Started rendering ${text.length} chars`);
+            
+            const highlightStart = performance.now();
             tsOutput.innerHTML = text ? highlightCode(text, 'typescript') : '';
+            const highlightDuration = performance.now() - highlightStart;
+            log('RENDER_TS', `Highlight + innerHTML took ${highlightDuration.toFixed(2)}ms`);
+            
+            const totalDuration = performance.now() - start;
+            log('RENDER_TS', `Total render time: ${totalDuration.toFixed(2)}ms`);
         }
 
         // Wait for converter to be ready
         function waitForConverter() {
+            log('INIT', 'Waiting for converter...');
             return new Promise((resolve) => {
                 if (window.scConverterReady) {
                     converterReady = true;
+                    log('INIT', 'Converter already ready!');
                     resolve();
                 } else {
+                    const start = performance.now();
                     const checkInterval = setInterval(() => {
                         if (window.scConverterReady) {
                             converterReady = true;
                             clearInterval(checkInterval);
+                            const duration = performance.now() - start;
+                            log('INIT', `Converter ready after ${duration.toFixed(2)}ms`);
                             resolve();
                         }
                     }, 50);
                     setTimeout(() => {
                         clearInterval(checkInterval);
+                        const duration = performance.now() - start;
+                        log('INIT', `Converter check timeout after ${duration.toFixed(2)}ms, may still be loading`);
                         resolve();
                     }, 5000);
                 }
@@ -438,37 +505,58 @@
         }
 
         async function convertCode() {
+            const start = performance.now();
             const code = getEditorText(scInput).trim();
+            log('CONVERT', `Input code: ${code.length} chars`);
 
             if (!code) {
                 tsOutputText = '';
                 renderTsEditor('');
                 status.textContent = '';
                 status.classList.remove('active');
+                log('CONVERT', 'Empty input, cleared output');
                 return;
             }
 
             if (!converterReady) {
                 status.textContent = 'Converter loading...';
                 status.classList.add('active', 'loading');
+                log('CONVERT', 'Converter not ready yet');
                 return;
             }
 
             status.textContent = 'Converting...';
             status.classList.add('active', 'loading');
             status.classList.remove('error', 'success');
+            log('CONVERT', 'Starting conversion...');
 
             try {
                 const config = gameSelect.value;
+                log('CONVERT', `Using config: ${config}`);
+                
+                const convertStart = performance.now();
                 const output = await window.convertScToTs(code, config);
+                const convertDuration = performance.now() - convertStart;
+                
+                log('CONVERT', `Conversion completed in ${convertDuration.toFixed(2)}ms, output: ${output.length} chars`);
+                
                 tsOutputText = output;
+                const renderStart = performance.now();
                 renderTsEditor(output);
+                const renderDuration = performance.now() - renderStart;
+                
+                log('CONVERT', `Rendering took ${renderDuration.toFixed(2)}ms`);
+                
                 status.textContent = `✓ Converted successfully (${config.toUpperCase()})`;
                 status.classList.add('success');
                 status.classList.remove('loading');
+                
+                const totalDuration = performance.now() - start;
+                log('CONVERT', `Total conversion cycle: ${totalDuration.toFixed(2)}ms`);
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Unknown error';
                 console.error('Conversion error:', error);
+                log('CONVERT', `ERROR: ${message}`, error);
                 tsOutputText = `// ERROR: ${message}\n// Check browser console for details`;
                 renderTsEditor(tsOutputText);
                 status.textContent = `Error: ${message}`;
@@ -485,47 +573,89 @@
         });
 
         scInput.addEventListener('paste', (event) => {
+            const start = performance.now();
             event.preventDefault();
             const text = (event.clipboardData || window.clipboardData).getData('text');
+            log('PASTE', `Pasted ${text.length} chars`);
+            
             document.execCommand('insertText', false, text);
+            
+            const duration = performance.now() - start;
+            log('PASTE', `Paste operation completed in ${duration.toFixed(2)}ms`);
         });
 
         scInput.addEventListener('input', () => {
-            if (renderingSc) return;
-            renderScEditor(getEditorText(scInput));
+            const start = performance.now();
+            if (renderingSc) {
+                log('INPUT', 'Skipped (currently rendering)');
+                return;
+            }
+            
+            const text = getEditorText(scInput);
+            log('INPUT', `Input event fired, content: ${text.length} chars`);
+            
+            const renderStart = performance.now();
+            renderScEditor(text);
+            const renderDuration = performance.now() - renderStart;
+            log('INPUT', `renderScEditor took ${renderDuration.toFixed(2)}ms`);
+            
             clearTimeout(conversionTimeout);
-            conversionTimeout = setTimeout(convertCode, 500);
+            log('INPUT', 'Scheduling conversion with 500ms delay');
+            conversionTimeout = setTimeout(() => {
+                log('INPUT', 'Conversion timeout triggered');
+                convertCode();
+            }, 500);
+            
+            const totalDuration = performance.now() - start;
+            log('INPUT', `Total input handler time: ${totalDuration.toFixed(2)}ms`);
         });
 
         gameSelect.addEventListener('change', () => {
+            log('GAME_SELECT', `Game changed to: ${gameSelect.value}`);
             status.classList.remove('active');
             convertCode();
         });
 
         copyBtn.addEventListener('click', async () => {
+            const start = performance.now();
             const text = tsOutputText;
-            if (!text) return;
+            log('COPY', `Copy clicked, text size: ${text.length} chars`);
+            
+            if (!text) {
+                log('COPY', 'No text to copy');
+                return;
+            }
 
             try {
                 await navigator.clipboard.writeText(text);
+                const duration = performance.now() - start;
+                log('COPY', `Successfully copied to clipboard in ${duration.toFixed(2)}ms`);
+                
                 const originalText = copyBtn.textContent;
                 copyBtn.textContent = 'Copied!';
                 setTimeout(() => {
                     copyBtn.textContent = originalText;
                 }, 2000);
             } catch (error) {
+                const duration = performance.now() - start;
+                log('COPY', `Error after ${duration.toFixed(2)}ms`, error);
                 status.textContent = 'Failed to copy to clipboard';
                 status.classList.add('active', 'error');
             }
         });
 
         // Initialize converter
+        const initStart = performance.now();
+        log('INIT', 'Starting page initialization');
         waitForConverter().then(() => {
             registerGta3ScriptLanguage();
             status.textContent = '';
             status.classList.remove('active');
             renderScEditor('');
             renderTsEditor('');
+            const initDuration = performance.now() - initStart;
+            log('INIT', `Page initialization complete in ${initDuration.toFixed(2)}ms`);
+            log('INIT', '=== SC Converter Ready ===');
         });
     </script>
 </body>
